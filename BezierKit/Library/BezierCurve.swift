@@ -541,7 +541,7 @@ public protocol BezierCurve: BoundingBoxProtocol, Transformable, Reversible {
     func intersects(line: LineSegment) -> [Intersection]
 }
 
-internal protocol NonlinearBezierCurve: BezierCurve {
+internal protocol NonlinearBezierCurve: Flatness {
     // intentionally empty, just declare conformance if you're not a line
 }
 

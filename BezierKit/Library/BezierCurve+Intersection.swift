@@ -28,10 +28,8 @@ private func sortedAndUniquifiedIntersections(_ intersections: [Intersection]) -
 }
 
 internal func helperIntersectsCurveCurve<U, T>(_ curve1: Subcurve<U>, _ curve2: Subcurve<T>, threshold: CGFloat) -> [Intersection] where U: NonlinearBezierCurve, T: NonlinearBezierCurve {
-    let lb = curve1.curve.boundingBox
-    let rb = curve2.curve.boundingBox
     var intersections: [Intersection] = []
-    Utils.pairiteration(curve1, curve2, lb, rb, &intersections, threshold)
+    Utils.pairiteration(curve1, curve2, &intersections, threshold)
     return sortedAndUniquifiedIntersections(intersections)
 }
 

@@ -359,30 +359,58 @@ internal class Utils {
             )
         }
     }
-        
+
+    static func distanceBetweenLines(_ l1: LineSegment, _ l2: LineSegment) -> CGFloat {
+
+        var d = CGFloat.infinity
+
+        if l1.intersects(line: l2).isEmpty == false {
+            return 0.0
+        }
+
+        let d1 = distance(l1.startingPoint, l2.project(point: l1.startingPoint))
+        if d1 < d { d = d1 }
+
+        let d2 = distance(l1.endingPoint, l2.project(point: l1.endingPoint))
+        if d2 < d { d = d2 }
+
+        let d3 = distance(l2.startingPoint, l1.project(point: l2.startingPoint))
+        if d3 < d { d = d3 }
+
+        let d4 = distance(l2.endingPoint, l1.project(point: l2.endingPoint))
+        if d4 < d { d = d4 }
+
+        return d
+
+    }
+
     static func pairiteration<C1, C2>(_ c1: Subcurve<C1>, _ c2: Subcurve<C2>,
-                                      _ c1b: BoundingBox, _ c2b: BoundingBox,
                                       _ results: inout [Intersection],
-                                      _ threshold: CGFloat = BezierKit.defaultIntersectionThreshold) {
+                                      _ threshold: CGFloat = BezierKit.defaultIntersectionThreshold) where C1: Flatness, C2: Flatness {
         
         if results.count > 20 {
             // TODO: better bailout conditions
             return
         }
-        
-        guard c1b.overlaps(c2b) else {
+
+        let flatness1 = sqrt(c1.curve.flatness)
+        let flatness2 = sqrt(c2.curve.flatness)
+        let maxDistance = flatness1 + flatness2
+
+        let l1 = LineSegment(p0: c1.curve.startingPoint, p1: c1.curve.endingPoint)
+        let l2 = LineSegment(p0: c2.curve.startingPoint, p1: c2.curve.endingPoint)
+
+        guard distanceBetweenLines(l1, l2) < maxDistance else {
             return
         }
 
         let canSplit1 = c1.canSplit
         let canSplit2 = c2.canSplit
-        let shouldRecurse1 = canSplit1 && ((c1b.size.x + c1b.size.y) >= threshold)
-        let shouldRecurse2 = canSplit2 && ((c2b.size.x + c2b.size.y) >= threshold)
+        let shouldRecurse1 = canSplit1 && flatness1 >= 0.01 * threshold
+        let shouldRecurse2 = canSplit2 && flatness2 >= 0.01 * threshold
 
         if shouldRecurse1 == false, shouldRecurse2 == false {
             // subcurves are small enough or we simply cannot recurse any more
-            let l1 = LineSegment(p0: c1.curve.startingPoint, p1: c1.curve.endingPoint)
-            let l2 = LineSegment(p0: c2.curve.startingPoint, p1: c2.curve.endingPoint)
             guard let intersection = l1.intersects(line: l2).first else {
                 return
             }
@@ -394,28 +422,20 @@ internal class Utils {
         else if shouldRecurse1, shouldRecurse2 {
             let cc1 = c1.split(at: 0.5)
             let cc2 = c2.split(at: 0.5)
-            let cc1lb = cc1.left.curve.boundingBox
-            let cc1rb = cc1.right.curve.boundingBox
-            let cc2lb = cc2.left.curve.boundingBox
-            let cc2rb = cc2.right.curve.boundingBox
-            Utils.pairiteration(cc1.left, cc2.left, cc1lb, cc2lb, &results, threshold)
-            Utils.pairiteration(cc1.left, cc2.right, cc1lb, cc2rb, &results, threshold)
-            Utils.pairiteration(cc1.right, cc2.left, cc1rb, cc2lb, &results, threshold)
-            Utils.pairiteration(cc1.right, cc2.right, cc1rb, cc2rb, &results, threshold)
+            Utils.pairiteration(cc1.left, cc2.left, &results, threshold)
+            Utils.pairiteration(cc1.left, cc2.right, &results, threshold)
+            Utils.pairiteration(cc1.right, cc2.left, &results, threshold)
+            Utils.pairiteration(cc1.right, cc2.right, &results, threshold)
         }
         else if shouldRecurse1 {
             let cc1 = c1.split(at: 0.5)
-            let cc1lb = cc1.left.curve.boundingBox
-            let cc1rb = cc1.right.curve.boundingBox
-            Utils.pairiteration(cc1.left, c2, cc1lb, c2b, &results, threshold)
-            Utils.pairiteration(cc1.right, c2, cc1rb, c2b, &results, threshold)
+            Utils.pairiteration(cc1.left, c2, &results, threshold)
+            Utils.pairiteration(cc1.right, c2, &results, threshold)
         }
         else if shouldRecurse2 {
             let cc2 = c2.split(at: 0.5)
-            let cc2lb = cc2.left.curve.boundingBox
-            let cc2rb = cc2.right.curve.boundingBox
-            Utils.pairiteration(c1, cc2.left, c1b, cc2lb, &results, threshold)
-            Utils.pairiteration(c1, cc2.right, c1b, cc2rb, &results, threshold)
+            Utils.pairiteration(c1, cc2.left, &results, threshold)
+            Utils.pairiteration(c1, cc2.right, &results, threshold)
         }
     }
             
