@@ -238,8 +238,8 @@ public struct CubicCurve: NonlinearBezierCurve, Equatable {
                                 p4.x + p4.y,
                                 p5.x + p5.y].map { Double($0) }
         let scratchPad = UnsafeMutableBufferPointer<Double>.allocate(capacity: points.count)
-        for t in findRoots(of: points, between: 0, and: 1, scratchPad: scratchPad) {
-            guard t > 0.0, t < 1.0 else { break }
+        findRoots(of: points, between: 0, and: 1, scratchPad: scratchPad) { t in
+            guard t > 0.0, t < 1.0 else { return }
             let point = c.point(at: CGFloat(t))
             let distanceSquared = point.lengthSquared
             if distanceSquared < minimumDistanceSquared {

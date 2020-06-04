@@ -13,7 +13,17 @@ protocol Polynomial {
     func f(_ x: Double, _ scratchPad: UnsafeMutableBufferPointer<Double>) -> Double
     var derivative: Derivative { get }
     var order: Int { get }
-    func analyticalRoots(between start: Double, and end: Double) -> [Double]?
+    func analyticalRoots(between start: Double, and end: Double, callback: (Double) -> Void) -> Bool
+}
+
+internal extension Polynomial {
+    func analyticalRoots(between start: Double, and end: Double) -> [Double]? {
+        var values = [Double]()
+        guard self.analyticalRoots(between: start, and: end, callback: { values.append($0) }) == true else {
+            return nil
+        }
+        return values
+    }
 }
 
 extension Array: Polynomial where Element == Double {
@@ -53,15 +63,17 @@ extension Array: Polynomial where Element == Double {
             count = bufferCapacity
         }
     }
-    func analyticalRoots(between start: Double, and end: Double) -> [Double]? {
+    func analyticalRoots(between start: Double, and end: Double, callback: (Double) -> Void) -> Bool {
         let order = self.order
-        guard order > 0 else { return [] }
-        guard order < 4 else { return nil } // cannot solve
-        return Utils.droots(self.map { CGFloat($0) }).compactMap {
-            let t = Double($0)
-            guard t > start, t < end else { return nil }
-            return t
+        guard order > 0 else { return true }
+        guard order < 4 else { return false } // cannot solve
+        let values: [CGFloat] = self.map { CGFloat($0) }
+        Utils.droots(values) { (f: CGFloat) in
+            let t = Double(f)
+            guard t > start, t < end else { return }
+            callback(t)
         }
+        return true
     }
 }
 
@@ -107,18 +119,16 @@ private func findRootBisection<P: Polynomial>(of polynomial: P, start: Double, e
     return guess
 }
 
-func findRoots<P: Polynomial>(of polynomial: P, between start: Double, and end: Double, scratchPad: UnsafeMutableBufferPointer<Double>) -> [Double] {
+func findRoots<P: Polynomial>(of polynomial: P, between start: Double, and end: Double, scratchPad: UnsafeMutableBufferPointer<Double>, callback: (Double) -> Void) {
     assert(start < end)
-    if let roots = polynomial.analyticalRoots(between: start, and: end) {
-        return roots
+    if polynomial.analyticalRoots(between: start, and: end, callback: callback) == true {
+        return
     }
-    let derivative = polynomial.derivative
-    let criticalPoints: [Double] = findRoots(of: derivative, between: start, and: end, scratchPad: scratchPad)
-    let intervals: [Double] = [start] + criticalPoints + [end]
+
     var lastFoundRoot: Double?
-    let roots = (0..<intervals.count-1).compactMap { (i: Int) -> Double? in
-        let start   = intervals[i]
-        let end     = intervals[i+1]
+    let derivative = polynomial.derivative
+
+    func findRootMonotonicInterval(_ start: Double, _ end: Double) {
         let fStart  = polynomial.f(start, scratchPad)
         let fEnd    = polynomial.f(end, scratchPad)
         let root: Double
@@ -139,20 +149,26 @@ func findRoots<P: Polynomial>(of polynomial: P, between start: Double, and end: 
             let guess = end
             let value = newton(polynomial: polynomial, derivative: derivative, guess: guess, scratchPad: scratchPad)
             guard abs(value - guess) < 1.0e-5 else {
-                return nil // did not converge near guess
+                return // did not converge near guess
             }
             guard abs(polynomial.f(value, scratchPad)) < 1.0e-10 else {
-                return nil // not actually a root
+                return // not actually a root
             }
             root = value
         }
         if let lastFoundRoot = lastFoundRoot {
             guard lastFoundRoot + 1.0e-5 < root else {
-                return nil // ensures roots are unique and ordered
+                return // ensures roots are unique and ordered
             }
         }
         lastFoundRoot = root
-        return root
+        callback(root)
     }
-    return roots
+
+    var intervalStart = start
+    findRoots(of: derivative, between: start, and: end, scratchPad: scratchPad) {
+        findRootMonotonicInterval(intervalStart, $0)
+        intervalStart = $0
+    }
+    findRootMonotonicInterval(intervalStart, end)
 }

@@ -68,14 +68,17 @@ extension BezierCurve {
             return (1..<array.count).map { array[$0] - array[$0 - 1] }
         }
         func rootsForDimension(_ dimension: Int) -> [CGFloat] {
-            let values = self.points.map { $0[dimension] }
-            let firstOrderDiffs = sequentialDifference(values)
-            var roots = Utils.droots(firstOrderDiffs)
-            if self.order >= 3 {
-                let secondOrderDiffs = sequentialDifference(firstOrderDiffs)
-                roots += Utils.droots(secondOrderDiffs)
-            }
-            return roots.filter({$0 >= 0 && $0 <= 1}).sortedAndUniqued()
+            #warning("code disabled")
+//            let values = self.points.map { $0[dimension] }
+//            let firstOrderDiffs = sequentialDifference(values)
+//            var roots = Utils.droots(firstOrderDiffs)
+//            if self.order >= 3 {
+//                let secondOrderDiffs = sequentialDifference(firstOrderDiffs)
+//                roots += Utils.droots(secondOrderDiffs)
+//            }
+//            return roots.filter({$0 >= 0 && $0 <= 1}).sortedAndUniqued()
+            
+            return []
         }
         guard self.order > 1 else { return (x: [], y: [], all: []) }
         let xRoots = rootsForDimension(0)

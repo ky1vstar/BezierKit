@@ -11,6 +11,14 @@ import XCTest
 
 class PolynomialTests: XCTestCase {
 
+    private func findRoots(of polynomial: [Double], between start: Double, and end: Double, scratchPad: UnsafeMutableBufferPointer<Double>) -> [Double] {
+        var roots = [Double]()
+        BezierKit.findRoots(of: polynomial, between: start, and: end, scratchPad: scratchPad) {
+            roots.append($0)
+        }
+        return roots
+    }
+
     let accuracy = 1.0e-5
 
     func testEvaluation() {
