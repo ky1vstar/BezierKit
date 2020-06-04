@@ -11,18 +11,31 @@ import CoreGraphics
 protocol Polynomial {
     associatedtype Derivative: Polynomial
     func f(_ x: Double, _ scratchPad: UnsafeMutableBufferPointer<Double>) -> Double
-    var derivative: Derivative { get }
+    func derivative(_: UnsafeMutableBufferPointer<Double>) -> Derivative
     var order: Int { get }
-    func analyticalRoots(between start: Double, and end: Double, callback: (Double) -> Void) -> Bool
+    func analyticalRoots(between start: Double, and end: Double, scratchPad: UnsafeMutableBufferPointer<Double>) -> UnsafeMutableBufferPointer<Double>?
 }
 
 internal extension Polynomial {
     func analyticalRoots(between start: Double, and end: Double) -> [Double]? {
-        var values = [Double]()
-        guard self.analyticalRoots(between: start, and: end, callback: { values.append($0) }) == true else {
+        let scratchPad = UnsafeMutableBufferPointer<Double>.allocate(capacity: 3)
+        defer { scratchPad.deallocate() }
+        guard let result = self.analyticalRoots(between: start, and: end, scratchPad: scratchPad) else {
             return nil
         }
-        return values
+        return [Double](result)
+    }
+}
+
+extension UnsafeMutableBufferPointer {
+    mutating func push(_ count: Int) -> UnsafeMutableBufferPointer<Element> {
+        assert(self.count >= count)
+        let value = UnsafeMutableBufferPointer(start: self.baseAddress, count: count)
+        self = UnsafeMutableBufferPointer<Element>(start: self.baseAddress! + count, count: self.count - count)
+        return value
+    }
+    mutating func pop(_ count: Int) {
+        self = UnsafeMutableBufferPointer<Element>(start: self.baseAddress! - count, count: self.count + count)
     }
 }
 
@@ -30,7 +43,6 @@ extension UnsafeMutableBufferPointer: Polynomial where Element == Double {
     typealias Derivative = Self
     var order: Int { return self.count - 1 }
     func f(_ x: Double, _ scratchPad: UnsafeMutableBufferPointer<Double>) -> Double {
-        assert(scratchPad.count >= self.count, "scratchpad will fail here.")
         let count = self.count
         guard count > 0 else { return 0 }
         let oneMinusX = 1.0 - x
@@ -50,23 +62,25 @@ extension UnsafeMutableBufferPointer: Polynomial where Element == Double {
         }
         return scratchPad[0]
     }
-    var derivative: UnsafeMutableBufferPointer<Double> {
-        #warning("memory leak")
+    func derivative(_ buffer: UnsafeMutableBufferPointer<Double>) -> UnsafeMutableBufferPointer<Double> {
         let bufferCapacity = self.order
+        assert(buffer.count >= bufferCapacity)
         assert(bufferCapacity > 0)
         let n = Double(bufferCapacity)
-        let buffer = UnsafeMutableBufferPointer<Double>.allocate(capacity: bufferCapacity)
         for i in 0..<bufferCapacity {
             buffer[i] = n * (self[i+1] - self[i])
         }
-        return buffer
+        return UnsafeMutableBufferPointer(start: buffer.baseAddress!, count: bufferCapacity)
     }
-    func analyticalRoots(between start: Double, and end: Double, callback: (Double) -> Void) -> Bool {
+    func analyticalRoots(between start: Double, and end: Double, scratchPad: UnsafeMutableBufferPointer<Double>) -> UnsafeMutableBufferPointer<Double>? {
+        var scratchPad = scratchPad
         let order = self.order
-        guard order > 0 else { return true }
-        guard order < 4 else { return false } // cannot solve
+        guard order > 0 else { return scratchPad.push(0) }
+        guard order < 4 else { return nil } // cannot solve
+        var i = 0
         func c(_ x: CGFloat) {
-            callback(Double(x))
+            scratchPad[i] = Double(x)
+            i += 1
         }
         switch self.count {
         case 4:
@@ -78,7 +92,8 @@ extension UnsafeMutableBufferPointer: Polynomial where Element == Double {
         default:
             assertionFailure("?")
         }
-        return true
+        scratchPad = UnsafeMutableBufferPointer(start: scratchPad.baseAddress!, count: i)
+        return scratchPad
     }
 }
 
@@ -124,16 +139,45 @@ private func findRootBisection<P: Polynomial>(of polynomial: P, start: Double, e
     return guess
 }
 
-func findRoots<P: Polynomial>(of polynomial: P, between start: Double, and end: Double, scratchPad: UnsafeMutableBufferPointer<Double>, callback: (Double) -> Void) {
+func findRoots(of polynomial: UnsafeMutableBufferPointer<Double>, between start: Double, and end: Double, roots: inout UnsafeMutableBufferPointer<Double>, scratchPad: UnsafeMutableBufferPointer<Double>) {
     assert(start < end)
-    if polynomial.analyticalRoots(between: start, and: end, callback: callback) == true {
+
+    var scratchPad = scratchPad
+
+    let analyticalRoots: UnsafeMutableBufferPointer<Double> = scratchPad.push(3)
+    defer { scratchPad.pop(3) }
+
+    if let analyticalRoots = polynomial.analyticalRoots(between: start, and: end, scratchPad: scratchPad) {
+        roots = UnsafeMutableBufferPointer<Double>(start: roots.baseAddress, count: analyticalRoots.count)
+        for i in 0..<analyticalRoots.count {
+            roots[i] = analyticalRoots[i]
+        }
         return
     }
 
-    var lastFoundRoot: Double?
-    let derivative = polynomial.derivative
+    var derivativeStorage = scratchPad.push(polynomial.count - 1)
+    defer { scratchPad.pop(derivativeStorage.count) }
+    let derivative = polynomial.derivative(derivativeStorage)
 
-    func findRootMonotonicInterval(_ start: Double, _ end: Double) {
+    var criticalPoints = scratchPad.push(derivative.order)
+    defer { scratchPad.pop(derivative.order) }
+    findRoots(of: derivative, between: start, and: end, roots: &criticalPoints, scratchPad: scratchPad)
+
+    let intervals = scratchPad.push(criticalPoints.count + 2)
+    defer { scratchPad.pop(criticalPoints.count + 2) }
+    intervals[0] = start
+    intervals[intervals.count - 1] = end
+    for i in 0..<criticalPoints.count {
+        intervals[i+1] = criticalPoints[i]
+    }
+
+    var lastFoundRoot: Double?
+
+    var rootsFound = 0
+
+    for i in (0..<intervals.count-1) {
+        let start   = intervals[i]
+        let end     = intervals[i+1]
         let fStart  = polynomial.f(start, scratchPad)
         let fEnd    = polynomial.f(end, scratchPad)
         let root: Double
@@ -154,26 +198,21 @@ func findRoots<P: Polynomial>(of polynomial: P, between start: Double, and end: 
             let guess = end
             let value = newton(polynomial: polynomial, derivative: derivative, guess: guess, scratchPad: scratchPad)
             guard abs(value - guess) < 1.0e-5 else {
-                return // did not converge near guess
+                continue // did not converge near guess
             }
             guard abs(polynomial.f(value, scratchPad)) < 1.0e-10 else {
-                return // not actually a root
+                continue // not actually a root
             }
             root = value
         }
         if let lastFoundRoot = lastFoundRoot {
             guard lastFoundRoot + 1.0e-5 < root else {
-                return // ensures roots are unique and ordered
+                continue // ensures roots are unique and ordered
             }
         }
         lastFoundRoot = root
-        callback(root)
+        roots[rootsFound] = root
+        rootsFound += 1
     }
-
-    var intervalStart = start
-    findRoots(of: derivative, between: start, and: end, scratchPad: scratchPad) {
-        findRootMonotonicInterval(intervalStart, $0)
-        intervalStart = $0
-    }
-    findRootMonotonicInterval(intervalStart, end)
+    roots = UnsafeMutableBufferPointer<Double>(start: roots.baseAddress!, count: rootsFound)
 }

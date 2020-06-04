@@ -15,9 +15,9 @@ class PolynomialTests: XCTestCase {
         var roots = [Double]()
         polynomial.withUnsafeBufferPointer { buffer in
             let mutableBuffer = UnsafeMutableBufferPointer<Double>(mutating: buffer)
-            BezierKit.findRoots(of: mutableBuffer, between: start, and: end, scratchPad: scratchPad) {
-                roots.append($0)
-            }
+//            BezierKit.findRoots(of: mutableBuffer, between: start, and: end, scratchPad: scratchPad) {
+//                roots.append($0)
+//            }
         }
         return roots
     }
