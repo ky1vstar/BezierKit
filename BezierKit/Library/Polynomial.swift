@@ -26,7 +26,7 @@ internal extension Polynomial {
     }
 }
 
-extension Array: Polynomial where Element == Double {
+extension UnsafeMutableBufferPointer: Polynomial where Element == Double {
     typealias Derivative = Self
     var order: Int { return self.count - 1 }
     func f(_ x: Double, _ scratchPad: UnsafeMutableBufferPointer<Double>) -> Double {
@@ -34,44 +34,49 @@ extension Array: Polynomial where Element == Double {
         let count = self.count
         guard count > 0 else { return 0 }
         let oneMinusX = 1.0 - x
-        self.withUnsafeBufferPointer { (points: UnsafeBufferPointer<Double>) in
-            var i = 0
-            while i < count {
-                scratchPad[i] = points[i]
-                i += 1
-            }
-            i = count - 1
-            while i > 0 {
-                var j = 0
-                repeat {
-                    scratchPad[j] = oneMinusX * scratchPad[j] + x * scratchPad[j+1]
-                    j += 1
-                } while j < i
-                i -= 1
-            }
+        var i = 0
+        while i < count {
+            scratchPad[i] = self[i]
+            i += 1
+        }
+        i = count - 1
+        while i > 0 {
+            var j = 0
+            repeat {
+                scratchPad[j] = oneMinusX * scratchPad[j] + x * scratchPad[j+1]
+                j += 1
+            } while j < i
+            i -= 1
         }
         return scratchPad[0]
     }
-    var derivative: [Double] {
+    var derivative: UnsafeMutableBufferPointer<Double> {
+        #warning("memory leak")
         let bufferCapacity = self.order
-        guard bufferCapacity > 0 else { return [] }
+        assert(bufferCapacity > 0)
         let n = Double(bufferCapacity)
-        return [Double](unsafeUninitializedCapacity: bufferCapacity) { (buffer: inout UnsafeMutableBufferPointer<Double>, count: inout Int) in
-            for i in 0..<bufferCapacity {
-                buffer[i] = n * (self[i+1] - self[i])
-            }
-            count = bufferCapacity
+        let buffer = UnsafeMutableBufferPointer<Double>.allocate(capacity: bufferCapacity)
+        for i in 0..<bufferCapacity {
+            buffer[i] = n * (self[i+1] - self[i])
         }
+        return buffer
     }
     func analyticalRoots(between start: Double, and end: Double, callback: (Double) -> Void) -> Bool {
         let order = self.order
         guard order > 0 else { return true }
         guard order < 4 else { return false } // cannot solve
-        let values: [CGFloat] = self.map { CGFloat($0) }
-        Utils.droots(values) { (f: CGFloat) in
-            let t = Double(f)
-            guard t > start, t < end else { return }
-            callback(t)
+        func c(_ x: CGFloat) {
+            callback(Double(x))
+        }
+        switch self.count {
+        case 4:
+            Utils.droots(CGFloat(self[0]), CGFloat(self[1]), CGFloat(self[2]), CGFloat(self[3]), callback: c)
+        case 3:
+            Utils.droots(CGFloat(self[0]), CGFloat(self[1]), CGFloat(self[2]), callback: c)
+        case 2:
+            Utils.droots(CGFloat(self[0]), CGFloat(self[1]), callback: c)
+        default:
+            assertionFailure("?")
         }
         return true
     }
