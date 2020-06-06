@@ -19,6 +19,11 @@ protocol Polynomial {
 extension Array: Polynomial where Element == Double {
     typealias Derivative = Self
     var order: Int { return self.count - 1 }
+    func split(to x: Double, scratchPad: UnsafeMutableBufferPointer<Double>) -> [Double] {
+        _ = f(x, scratchPad)
+        let rebased = UnsafeMutableBufferPointer<Double>.init(start: scratchPad.baseAddress!, count: self.count)
+        return [Double](rebased)
+    }
     func f(_ x: Double, _ scratchPad: UnsafeMutableBufferPointer<Double>) -> Double {
         assert(scratchPad.count >= self.count, "scratchpad will fail here.")
         let count = self.count
@@ -30,17 +35,17 @@ extension Array: Polynomial where Element == Double {
                 scratchPad[i] = points[i]
                 i += 1
             }
-            i = count - 1
-            while i > 0 {
-                var j = 0
+            i = 1
+            while i < count {
+                var j = count-1
                 repeat {
-                    scratchPad[j] = oneMinusX * scratchPad[j] + x * scratchPad[j+1]
-                    j += 1
-                } while j < i
-                i -= 1
+                    scratchPad[j] = oneMinusX * scratchPad[j-1] + x * scratchPad[j]
+                    j -= 1
+                } while j >= i
+                i += 1
             }
         }
-        return scratchPad[0]
+        return scratchPad[count-1]
     }
     var derivative: [Double] {
         let bufferCapacity = self.order
@@ -107,52 +112,77 @@ private func findRootBisection<P: Polynomial>(of polynomial: P, start: Double, e
     return guess
 }
 
-func findRoots<P: Polynomial>(of polynomial: P, between start: Double, and end: Double, scratchPad: UnsafeMutableBufferPointer<Double>) -> [Double] {
+func findRoots(of polynomial: [Double], between start: Double, and end: Double, scratchPad: UnsafeMutableBufferPointer<Double>) -> [Double] {
     assert(start < end)
-    if let roots = polynomial.analyticalRoots(between: start, and: end) {
-        return roots
+
+    guard end - start > 1.0e-7 else {
+        return [0.5]
     }
-    let derivative = polynomial.derivative
-    let criticalPoints: [Double] = findRoots(of: derivative, between: start, and: end, scratchPad: scratchPad)
-    let intervals: [Double] = [start] + criticalPoints + [end]
-    var lastFoundRoot: Double?
-    let roots = (0..<intervals.count-1).compactMap { (i: Int) -> Double? in
-        let start   = intervals[i]
-        let end     = intervals[i+1]
-        let fStart  = polynomial.f(start, scratchPad)
-        let fEnd    = polynomial.f(end, scratchPad)
-        let root: Double
-        if fStart * fEnd < 0 {
-            // TODO: if a critical point is a root we take this
-            // codepath due to roundoff and  converge only linearly to one end of interval
-            let guess = (start + end) / 2
-            let newtonRoot = newton(polynomial: polynomial, derivative: derivative, guess: guess, scratchPad: scratchPad)
-            if start < newtonRoot, newtonRoot < end {
-                root = newtonRoot
-            } else {
-                // newton's method failed / converged to the wrong root!
-                // rare, but can happen roughly 5% of the time
-                // see unit test: `testDegree4RealWorldIssue`
-                root = findRootBisection(of: polynomial, start: start, end: end, scratchPad: scratchPad)
+
+    var tMin: CGFloat = 1
+    var tMax: CGFloat = 0
+    var intersected = false
+
+    var polynomial = polynomial
+    func x(_ i: Int) -> CGFloat {
+        return CGFloat(i) / CGFloat(polynomial.count-1)
+    }
+    func y(_ i: Int) -> CGFloat {
+        return CGFloat(polynomial[i])
+    }
+    // compute the intersections of each pair of lines with the x axis
+    for i in 0..<polynomial.count {
+        for j in i+1..<polynomial.count {
+            let p1 = CGPoint(x: x(i), y: y(i))
+            let p2 = CGPoint(x: x(j), y: y(j))
+            let t1 = -p1.y / (p2.y - p1.y)
+            guard t1 >= 0, t1 <= 1 else {
+                continue
             }
-        } else {
-            let guess = end
-            let value = newton(polynomial: polynomial, derivative: derivative, guess: guess, scratchPad: scratchPad)
-            guard abs(value - guess) < 1.0e-5 else {
-                return nil // did not converge near guess
+            intersected = true
+            let t2 = -p1.y / ((p2.y - p1.y) / (p2.x - p1.x)) + p1.x
+            if t2 < tMin {
+                tMin = t2
             }
-            guard abs(polynomial.f(value, scratchPad)) < 1.0e-10 else {
-                return nil // not actually a root
-            }
-            root = value
-        }
-        if let lastFoundRoot = lastFoundRoot {
-            guard lastFoundRoot + 1.0e-5 < root else {
-                return nil // ensures roots are unique and ordered
+            if t2 > tMax {
+                tMax = t2
             }
         }
-        lastFoundRoot = root
-        return root
     }
-    return roots
+
+    guard intersected == true else {
+        return [] // no intersections with convex hull
+    }
+
+    guard abs(tMax - tMin) <= 0.8 else {
+
+        let mid = (start + end) / 2
+
+        let left = polynomial.split(to: 0.5, scratchPad: scratchPad)
+        let solutionsLeft = findRoots(of: left, between: start, and: mid, scratchPad: scratchPad).map { 0.5 * $0 }
+        let right = [Double](polynomial.reversed()).split(to: 0.5, scratchPad: scratchPad).reversed()
+        let solutionsRight = findRoots(of: [Double](right), between: mid, and: end, scratchPad: scratchPad).map { 0.5 + 0.5 * $0 }
+        return solutionsLeft + solutionsRight
+    }
+
+    func adjustedT(_ t: Double) -> Double {
+        return start * (1.0 - t) + end * t
+    }
+
+    let adjustedStart = adjustedT(Double(tMin))
+    let adjustedEnd = adjustedT(Double(tMax))
+
+    var clippedPolynomial = polynomial.split(to: Double(tMax), scratchPad: scratchPad)
+
+    let tMinPrime = Double(tMin / tMax)
+    clippedPolynomial = [Double]([Double](clippedPolynomial.reversed()).split(to: 1.0 - tMinPrime, scratchPad: scratchPad).reversed())
+
+    guard adjustedEnd > adjustedStart else {
+        return [Double(tMin + tMax) / 2.0]
+    }
+
+    return findRoots(of: clippedPolynomial,
+                     between: adjustedStart,
+                     and: adjustedEnd,
+                     scratchPad: scratchPad).map { Double(tMin) * (1.0 - $0) + Double(tMax) * $0 }
 }
