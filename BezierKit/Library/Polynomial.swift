@@ -115,15 +115,10 @@ private func findRootBisection<P: Polynomial>(of polynomial: P, start: Double, e
 func findRoots(of polynomial: [Double], between start: Double, and end: Double, scratchPad: UnsafeMutableBufferPointer<Double>) -> [Double] {
     assert(start < end)
 
-    guard end - start > 1.0e-7 else {
-        return [0.5]
-    }
-
-    var tMin: CGFloat = 1
-    var tMax: CGFloat = 0
+    var tMin: CGFloat = CGFloat.infinity
+    var tMax: CGFloat = -CGFloat.infinity
     var intersected = false
 
-    var polynomial = polynomial
     func x(_ i: Int) -> CGFloat {
         return CGFloat(i) / CGFloat(polynomial.count-1)
     }
@@ -154,35 +149,37 @@ func findRoots(of polynomial: [Double], between start: Double, and end: Double, 
         return [] // no intersections with convex hull
     }
 
-    guard abs(tMax - tMin) <= 0.8 else {
+    assert(tMin >= 0 && tMin <= 1)
+    assert(tMax >= 0 && tMax <= 1)
+    assert(tMax >= tMin)
 
-        let mid = (start + end) / 2
-
-        let left = polynomial.split(to: 0.5, scratchPad: scratchPad)
-        let solutionsLeft = findRoots(of: left, between: start, and: mid, scratchPad: scratchPad).map { 0.5 * $0 }
-        let right = [Double](polynomial.reversed()).split(to: 0.5, scratchPad: scratchPad).reversed()
-        let solutionsRight = findRoots(of: [Double](right), between: mid, and: end, scratchPad: scratchPad).map { 0.5 + 0.5 * $0 }
-        return solutionsLeft + solutionsRight
-    }
-
+    // find [adjustedStart, adjustedEnd] range represented by [tMin, tMax] in original polynomial
     func adjustedT(_ t: Double) -> Double {
         return start * (1.0 - t) + end * t
     }
-
     let adjustedStart = adjustedT(Double(tMin))
     let adjustedEnd = adjustedT(Double(tMax))
-
-    var clippedPolynomial = polynomial.split(to: Double(tMax), scratchPad: scratchPad)
-
-    let tMinPrime = Double(tMin / tMax)
-    clippedPolynomial = [Double]([Double](clippedPolynomial.reversed()).split(to: 1.0 - tMinPrime, scratchPad: scratchPad).reversed())
-
     guard adjustedEnd > adjustedStart else {
-        return [Double(tMin + tMax) / 2.0]
+        return [Double(adjustedStart + adjustedEnd) / 2.0]
     }
 
+    guard tMax - tMin <= 0.8 else {
+        // we didn't clip enough of the polynomial off
+        // split the polynomial in two and find solutions in each half
+        let mid = (start + end) / 2
+        let left = polynomial.split(to: 0.5, scratchPad: scratchPad)
+        let solutionsLeft = findRoots(of: left, between: start, and: mid, scratchPad: scratchPad)
+        let right = [Double](polynomial.reversed()).split(to: 0.5, scratchPad: scratchPad).reversed()
+        let solutionsRight = findRoots(of: [Double](right), between: mid, and: end, scratchPad: scratchPad)
+        return solutionsLeft + solutionsRight
+    }
+
+    // clip the polynomial to [tMin, tMax]
+    var clippedPolynomial = polynomial.split(to: Double(tMax), scratchPad: scratchPad)
+    let tMinPrime = Double(tMin / tMax)
+    clippedPolynomial = [Double]([Double](clippedPolynomial.reversed()).split(to: 1.0 - tMinPrime, scratchPad: scratchPad).reversed())
     return findRoots(of: clippedPolynomial,
                      between: adjustedStart,
                      and: adjustedEnd,
-                     scratchPad: scratchPad).map { Double(tMin) * (1.0 - $0) + Double(tMax) * $0 }
+                     scratchPad: scratchPad)
 }

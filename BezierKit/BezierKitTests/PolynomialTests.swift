@@ -47,7 +47,7 @@ class PolynomialTests: XCTestCase {
         let scratchPad = UnsafeMutableBufferPointer<Double>.allocate(capacity: 2)
         defer { scratchPad.deallocate() }
         let polynomial: [Double] = [-3, 2]
-        let roots = findRoots(of: polynomial, between: -1, and: 1, scratchPad: scratchPad)
+        let roots = findRoots(of: polynomial, between: 0 /* -1 */, and: 1, scratchPad: scratchPad)
         XCTAssertEqual(roots.count, 1)
         XCTAssertEqual(roots[0], 0.6, accuracy: accuracy)
     }
@@ -61,12 +61,20 @@ class PolynomialTests: XCTestCase {
 //        XCTAssertEqual(roots[1], 1.0 + 2.0 / 3.0, accuracy: accuracy)
 //    }
 
+    func testDegree2() {
+        let scratchPad = UnsafeMutableBufferPointer<Double>.allocate(capacity: 3)
+        defer { scratchPad.deallocate() }
+        let polynomial: [Double] = [-0.5, -0.5, 0.5]
+        let roots = findRoots(of: polynomial, between: 0, and: 1, scratchPad: scratchPad)
+        XCTAssertEqual(roots[0], 1 / sqrt(2), accuracy: accuracy)
+    }
+
     func testDegree3() {
         // x^3 - 6x^2 + 11x - 6
         let scratchPad = UnsafeMutableBufferPointer<Double>.allocate(capacity: 4)
         defer { scratchPad.deallocate() }
         let polynomial: [Double] = [-6, -7.0 / 3.0, -2.0 / 3.0, 0]
-        let roots = findRoots(of: polynomial, between: 0, and: 4, scratchPad: scratchPad)
+        let roots = findRoots(of: polynomial, between: 0, and: 1 /* 4 */, scratchPad: scratchPad)
         XCTAssertEqual(roots[0], 1, accuracy: accuracy)
 //        XCTAssertEqual(roots[1], 2, accuracy: accuracy)
 //        XCTAssertEqual(roots[2], 3, accuracy: accuracy)
@@ -78,7 +86,7 @@ class PolynomialTests: XCTestCase {
         let scratchPad = UnsafeMutableBufferPointer<Double>.allocate(capacity: 4)
         defer { scratchPad.deallocate() }
         let polynomial = [-2, -1.0 / 3.0, 0, 0]
-        let roots = findRoots(of: polynomial, between: -1, and: 3, scratchPad: scratchPad)
+        let roots = findRoots(of: polynomial, between: 0 /* -1 */, and: 1 /* 3 */, scratchPad: scratchPad)
         XCTAssertEqual(roots[0], 1, accuracy: accuracy)
      //   XCTAssertEqual(roots[1], 2, accuracy: accuracy)
     }
@@ -88,7 +96,7 @@ class PolynomialTests: XCTestCase {
         let scratchPad = UnsafeMutableBufferPointer<Double>.allocate(capacity: 5)
         defer { scratchPad.deallocate() }
         let polynomial = [1.44, 1.44, 1.44 - 1.22 / 3, 0.22, 0]
-        let roots = findRoots(of: polynomial, between: -2, and: 2, scratchPad: scratchPad)
+        let roots = findRoots(of: polynomial, between: 0 /* -2 */, and: 1 /* 2 */, scratchPad: scratchPad)
 //        XCTAssertEqual(roots[0], -1.2, accuracy: accuracy)
 //        XCTAssertEqual(roots[1], -1, accuracy: accuracy)
         XCTAssertEqual(roots[0]/*2*/, 1, accuracy: accuracy)
@@ -100,7 +108,7 @@ class PolynomialTests: XCTestCase {
         let scratchPad = UnsafeMutableBufferPointer<Double>.allocate(capacity: 5)
         defer { scratchPad.deallocate() }
         let polynomial: [Double] = [1, 1, 2.0 / 3.0, 0, 0]
-        let roots = findRoots(of: polynomial, between: -2, and: 2, scratchPad: scratchPad)
+        let roots = findRoots(of: polynomial, between: 0 /* -2 */, and: 1 /* 2 */, scratchPad: scratchPad)
         XCTAssertEqual(roots.count, 1 /* 2 */)
         //XCTAssertEqual(roots[0], -1, accuracy: accuracy)
         XCTAssertEqual(roots[0] /* 1 */, 1, accuracy: accuracy)
@@ -111,7 +119,7 @@ class PolynomialTests: XCTestCase {
         defer { scratchPad.deallocate() }
         // 0.2x^5 - 0.813333x^3 - 8.56x
         let polynomial = [0, -1.712, -3.424, -5.2173333, -7.1733332, -9.173333]
-        let roots = findRoots(of: polynomial, between: -4, and: 4, scratchPad: scratchPad)
+        let roots = findRoots(of: polynomial, between: 0 /* -4 */, and: 1 /* 4 */, scratchPad: scratchPad)
         XCTAssertEqual(polynomial.analyticalRoots(between: -5, and: 5), nil, "shouldn't be possible to solve analytically")
        // XCTAssertEqual(roots[0], -2.9806382, accuracy: accuracy)
         XCTAssertEqual(roots[0] /* 1 */, 0, accuracy: accuracy)
