@@ -130,9 +130,10 @@ func findRoots(of polynomial: [Double], between start: Double, and end: Double, 
         for j in i+1..<polynomial.count {
             let p1 = CGPoint(x: x(i), y: y(i))
             let p2 = CGPoint(x: x(j), y: y(j))
-            if p1.y > 0 && p2.y > 0 { continue }
-            if p1.y < 0 && p2.y < 0 { continue }
-            if p1.y == 0 && p2.y == 0 { continue }
+            let yDifference = p2.y - p1.y
+            guard yDifference != 0 else { continue }
+            guard p1.y <= 0 || p2.y <= 0 else { continue }
+            guard p1.y >= 0 || p2.y >= 0 else { continue }
             intersected = true
             let tLine = -p1.y / (p2.y - p1.y)
             let t = p1.x * (1 - tLine) + p2.x * tLine
